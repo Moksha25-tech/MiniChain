@@ -6,7 +6,9 @@ Unit tests for MiniChain transaction signing and verification.
 Covers:
   1. Valid transaction — properly signed tx verifies successfully.
   2. Modified transaction data — tampering after signing breaks verification.
-  3. Invalid public key — wrong sender key fails verification.
+  3. Invalid public key — Transaction.sign() raises ValueError at signing time
+     when the signing key does not match the sender field; a forged sender
+     field set after signing causes verify() to return False.
   4. Replay protection — duplicate nonce is rejected by state validation.
 """
 
@@ -69,7 +71,7 @@ def test_tampered_amount_fails_verification(alice, bob):
 
     tx = Transaction(alice_pk, bob_pk, 10, nonce=0)
     tx.sign(alice_sk)
-    tx.amount = 9999 
+    tx.amount = 9999  # tamper
 
     assert not tx.verify(), "A transaction with a tampered amount must not verify."
 
@@ -95,7 +97,7 @@ def test_tampered_nonce_fails_verification(alice, bob):
 
     tx = Transaction(alice_pk, bob_pk, 10, nonce=0)
     tx.sign(alice_sk)
-    tx.nonce = 99  
+    tx.nonce = 99  # tamper
 
     assert not tx.verify(), "A transaction with a tampered nonce must not verify."
 
@@ -122,7 +124,7 @@ def test_forged_sender_field_fails_verification(alice, bob):
 
     tx = Transaction(alice_pk, bob_pk, 10, nonce=0)
     tx.sign(alice_sk)
-    tx.sender = bob_pk
+    tx.sender = bob_pk  # forge sender
 
     assert not tx.verify(), "A transaction with a forged sender field must not verify."
 
@@ -133,7 +135,7 @@ def test_unsigned_transaction_fails_verification(alice, bob):
     _, bob_pk = bob
 
     tx = Transaction(alice_pk, bob_pk, 10, nonce=0)
-    
+    # No call to tx.sign()
 
     assert not tx.verify(), "An unsigned transaction must not verify."
 
@@ -152,6 +154,7 @@ def test_replay_attack_same_nonce_rejected(alice, bob, funded_state):
 
     assert funded_state.apply_transaction(tx), "First submission must succeed."
     assert not funded_state.apply_transaction(tx), "Replayed transaction must be rejected."
+    # Ensure the rejected replay did not mutate the ledger
     assert funded_state.get_account(alice_pk)["balance"] == 90, \
         "Alice's balance must not change after a rejected replay."
     assert funded_state.get_account(alice_pk)["nonce"] == 1, \
@@ -167,6 +170,7 @@ def test_out_of_order_nonce_rejected(alice, bob, funded_state):
     tx.sign(alice_sk)
 
     assert not funded_state.apply_transaction(tx), "A transaction with a skipped nonce must be rejected."
+    # Ensure the rejected transaction did not mutate the ledger
     assert funded_state.get_account(alice_pk)["balance"] == 100, \
         "Alice's balance must remain unchanged after a rejected transaction."
     assert funded_state.get_account(alice_pk)["nonce"] == 0, \
