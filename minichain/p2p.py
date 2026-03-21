@@ -43,7 +43,7 @@ class P2PNetwork:
             raise ValueError("handler_callback must be callable")
         self._handler_callback = handler_callback
 
-    async def start(self, port: int = 9000):
+    async def start(self, port: int = 9000, host: str = "127.0.0.1"):
         """Start listening for incoming peer connections on the given port."""
         self._port = port
         self._server = await asyncio.start_server(
@@ -206,7 +206,13 @@ class P2PNetwork:
     def _validate_message(self, message):
         if not isinstance(message, dict):
             return False
-        if set(message) != {"type", "data"}:
+        # Allow _peer_addr field added by _listen_to_peer
+        required_fields = {"type", "data"}
+        if not required_fields.issubset(set(message)):
+            return False
+        # Reject messages with unexpected fields (except _peer_addr)
+        allowed_fields = {"type", "data", "_peer_addr"}
+        if not set(message).issubset(allowed_fields):
             return False
 
         msg_type = message.get("type")
