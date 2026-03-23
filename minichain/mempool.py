@@ -19,24 +19,49 @@ class Mempool:
         with self._lock:
             existing = self._pool.get(tx.sender, {}).get(tx.nonce)
 
-            if existing and existing.tx_id == tx.tx_id:
-                logger.warning("Mempool: Duplicate transaction rejected %s", tx.tx_id)
-                return False
+            if existing:
+                if existing.tx_id == tx.tx_id:
+                    logger.warning("Mempool: Duplicate transaction rejected %s", tx.tx_id)
+                    return False
+                # Fix: Guard against older replacements (e.g. rejected block restore)
+                # Only allow overwrite if it's a genuinely newer replacement
+                if tx.timestamp <= existing.timestamp:
+                    logger.warning("Mempool: Ignoring older replacement %s", tx.tx_id)
+                    return False
+                
             if not existing and self._size >= self.max_size:
                 logger.warning("Mempool: Full, rejecting transaction")
                 return False
 
-            self._size += 0 if existing else 1
-            pool = self._pool.setdefault(tx.sender, {})
-            pool[tx.nonce] = tx
+            self._size += 1
+            self._pool.setdefault(tx.sender, {})[tx.nonce] = tx
             return True
 
     def get_transactions_for_block(self):
         with self._lock:
-            txs = [t for pool in self._pool.values() for t in pool.values()]
+            snapshot = {s: list(pool.values()) for s, pool in self._pool.items()}
+
+        for txs in snapshot.values():
+            txs.sort(key=lambda t: t.nonce)
+
+        selected = []
+        while len(selected) < self.transactions_per_block:
+            best_tx = None
+            best_sender = None
             
-        txs.sort(key=lambda t: (t.timestamp, t.sender, t.nonce))
-        return txs[: self.transactions_per_block]
+            for sender, txs in snapshot.items():
+                if txs:
+                    if best_tx is None or txs[0].timestamp < best_tx.timestamp:
+                        best_tx = txs[0]
+                        best_sender = sender
+                        
+            if not best_tx:
+                break
+                
+            selected.append(best_tx)
+            snapshot[best_sender].pop(0)
+
+        return selected
 
     def remove_transactions(self, transactions):
         with self._lock:
