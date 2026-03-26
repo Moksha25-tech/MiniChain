@@ -288,7 +288,7 @@ async def cli_loop(sk, pk, chain, mempool, network):
 # Main entry point
 # ──────────────────────────────────────────────
 
-async def run_node(port: int, connect_to: str | None, fund: int, datadir: str | None):
+async def run_node(port: int, host: str, connect_to: str | None, fund: int, datadir: str | None):
     """Boot the node, optionally connect to a peer, then enter the CLI."""
     sk, pk = create_wallet()
 
@@ -326,7 +326,7 @@ async def run_node(port: int, connect_to: str | None, fund: int, datadir: str | 
         await writer.drain()
         logger.info("🔄 Sent state sync to new peer")
 
-    network.set_on_peer_connected(on_peer_connected)
+    network.register_on_peer_connected(on_peer_connected)
 
     await network.start(port=port, host=host)
 
@@ -373,7 +373,7 @@ def main():
     )
 
     try:
-        asyncio.run(run_node(args.port, args.connect, args.fund, args.datadir))
+        asyncio.run(run_node(args.port, args.host, args.connect, args.fund, args.datadir))
     except KeyboardInterrupt:
         print("\nNode shut down.")
 
