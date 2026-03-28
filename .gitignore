@@ -334,3 +334,4 @@ __pycache__/
 *.so
 *bore.zip
 *bore_bin
+*.egg-info/
