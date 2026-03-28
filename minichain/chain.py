@@ -3,6 +3,7 @@ from .state import State
 from .pow import calculate_hash
 import logging
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class Blockchain:
         """
         Returns the most recent block in the chain.
         """
-        with self._lock: # Acquire lock for thread-safe access
+        with self._lock:
             return self.chain[-1]
 
     def add_block(self, block):
@@ -67,18 +68,42 @@ class Blockchain:
                 logger.warning("Block %s rejected: %s", block.index, exc)
                 return False
 
-            # Validate transactions on a temporary state copy
+            previous_block = self.last_block
+
+            # Timestamp Validation
+
+            if block.timestamp <= previous_block.timestamp:
+                logger.warning(
+                    "Block %s rejected: timestamp older than previous block",
+                    block.index,
+                )
+                return False
+
+            current_time = int(time.time() * 1000)
+
+            if block.timestamp > current_time + 60000:
+                logger.warning(
+                    "Block %s rejected: timestamp too far in future",
+                    block.index,
+                )
+                return False
+
+            # Transaction Validation
+
             temp_state = self.state.copy()
 
             for tx in block.transactions:
                 result = temp_state.validate_and_apply(tx)
 
-                # Reject block if any transaction fails
                 if not result:
-                    logger.warning("Block %s rejected: Transaction failed validation", block.index)
+                    logger.warning(
+                        "Block %s rejected: Transaction failed validation",
+                        block.index,
+                    )
                     return False
 
-            # All transactions valid → commit state and append block
+            # Commit state
             self.state = temp_state
             self.chain.append(block)
+
             return True
